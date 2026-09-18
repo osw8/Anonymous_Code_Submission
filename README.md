@@ -81,6 +81,9 @@ Public dataset sources include:
 
 - CHB-MIT: https://physionet.org/content/chbmit/
 - TUSZ: https://isip.piconepress.com/projects/tuh_eeg/
+- Siena Scalp EEG Database: https://physionet.org/content/siena-scalp-eeg/1.0.0/
+- Epilepsy_iEEG: https://openneuro.org/datasets/ds003029/versions/1.0.7
+- Thalamocortical_iEEG: https://openneuro.org/datasets/ds007445
 
 The default local layout expected by the launcher is:
 
