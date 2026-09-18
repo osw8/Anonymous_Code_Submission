@@ -1,0 +1,7 @@
+defaults:
+    - stieger2021
+    - _self_
+name: Stieger2021
+sessions:
+    n: 1
+    order: last

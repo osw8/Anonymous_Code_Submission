@@ -1,0 +1,52 @@
+protocol_track: eeg_cross_dataset
+output_root: data/preprocessed/cross_dataset/60s
+window_seconds: 60.0
+
+datasets:
+  tusz:
+    source_root: data/raw/TUSZ_EEG
+    line_frequency_hz: 60.0
+  chbmit:
+    source_root: data/raw/chb-mit
+    line_frequency_hz: 60.0
+  siena:
+    source_root: data/raw/Siena_EEG
+    line_frequency_hz: 50.0
+    annotation_overrides:
+      PN00:
+        PN00-3.edf:
+          - start_seconds: 765.0
+            end_seconds: 825.0
+
+signal:
+  l_freq: 0.5
+  h_freq: 45.0
+  line_noise_policy: dataset_native_spectrum_fit
+  notch_method: spectrum_fit
+  notch_filter_length: 10s
+  notch_mt_bandwidth: 2.0
+  bandpass_method: fir
+  bandpass_phase: zero
+  fir_window: hamming
+  fir_design: firwin
+  nyquist_margin_hz: 0.5
+  target_sfreq: 256
+  resampling_method: fft
+  normalization: per_clip_per_channel_zscore
+  clip_uv: null
+
+timeline:
+  max_contiguous_gap_seconds: 60.0
+
+split:
+  train_ratio: 0.60
+  dev_ratio: 0.20
+  test_ratio: 0.20
+
+qc:
+  min_channel_std_uv: 0.1
+  max_flat_channel_fraction: 0.20
+  continuous_bad_channel_max_seconds: 120.0
+
+storage:
+  compress_npz: true

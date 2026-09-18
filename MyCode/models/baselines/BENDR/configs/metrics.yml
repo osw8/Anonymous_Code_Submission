@@ -1,0 +1,17 @@
+
+mmidb:
+  - bac
+
+bci_iv_2a:
+  - Accuracy: 0.25
+
+ern:
+  - auroc
+
+erpbci:
+  - auroc
+
+sleep-edf:
+  - bac: 0.2
+
+

@@ -1,0 +1,39 @@
+{
+  "n_chans": 20,
+  "n_outputs": 2,
+  "n_times": 1000,
+  "chs_info": null,
+  "input_window_seconds": null,
+  "sfreq": 250,
+  "encoder_h": 512,
+  "contextualizer_hidden": 3076,
+  "projection_head": false,
+  "drop_prob": 0.1,
+  "layer_drop": 0.0,
+  "activation": "torch.nn.modules.activation.GELU",
+  "transformer_layers": 8,
+  "transformer_heads": 8,
+  "position_encoder_length": 25,
+  "enc_width": [
+    3,
+    2,
+    2,
+    2,
+    2,
+    2
+  ],
+  "enc_downsample": [
+    3,
+    2,
+    2,
+    2,
+    2,
+    2
+  ],
+  "start_token": -5,
+  "final_layer": true,
+  "encoder_only": false,
+  "n_chans_pretrained": null,
+  "chan_proj_max_norm": 1.0,
+  "braindecode_version": "1.5.0dev0"
+}

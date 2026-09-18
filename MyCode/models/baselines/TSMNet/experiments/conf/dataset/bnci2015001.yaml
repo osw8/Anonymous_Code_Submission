@@ -1,0 +1,9 @@
+name: BNCI2015001
+type:
+    _target_: datasetio.eeg.moabb.BNCI2015001
+
+classes: ["right_hand", "feet"]
+channels: null
+resample: 256
+tmin: 1.
+tmax: 4.

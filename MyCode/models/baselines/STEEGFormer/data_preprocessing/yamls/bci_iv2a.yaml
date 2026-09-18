@@ -1,0 +1,25 @@
+data:
+  path: /path/to/datasets/bci_comp_iv2a/
+
+channels:
+  n_channels: 22
+  names: [Fz, FC3, FC1, FCz, FC2, FC4, C5, C3, C1, Cz, C2, C4,
+          C6, CP3, CP1, CPz, CP2, CP4, P1, Pz, P2, POz]
+
+filter:
+  l_freq: 0.1
+  h_freq: 75.0
+  notch: [50, 100]
+
+resample_freq: 256
+
+events:
+  mapping: {1: left_hand, 2: right_hand, 3: feet, 4: tongue}
+
+epochs:
+  tmin: 2.0
+  tmax: 6.0
+  baseline: null
+
+output:
+  dir: /path/to/outputs/bci_iv2a_processed

@@ -1,0 +1,22 @@
+data:
+  path: /path/to/datasets/alzheimer/ds004504-download
+  participants_tsv: /path/to/datasets/alzheimer/ds004504-download/participants.tsv
+
+channels:
+  n_channels: 19
+  names: [Fp1, Fp2, F3, F4, C3, C4, P3, P4, O1, O2, F7, F8, T3, T4, T5, T6, Fz, Cz, Pz]
+
+filter:
+  l_freq: 0.1
+  h_freq: 75.0
+  notch: [50, 62.5, 125]
+
+resample_freq: 256
+
+epochs:
+  tmin: 0.0
+  tmax: 3.0
+  baseline: null
+
+output:
+  dir: /path/to/outputs/alzheimer_processed
