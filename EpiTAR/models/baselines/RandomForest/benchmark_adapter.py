@@ -198,7 +198,7 @@ def run(args: argparse.Namespace) -> None:
     if budget_selection is not None:
         selection_root = target_root
         selection_frame = filter_budget_manifest(load_manifest(target_root, 'dev'), budget_selection.clip_ids('dev'), 'dev')
-        threshold_source = 'fixed_target_dev_max_f1'
+        threshold_source = 'budgeted_target_dev_max_f1'
     target_test = load_manifest(target_root, 'test')
     x_dev, y_dev, dev_rows = load_features(selection_root, selection_frame, contract, 'Selection features')
     x_test, y_test, test_rows = load_features(target_root, target_test, contract, 'Target test features')

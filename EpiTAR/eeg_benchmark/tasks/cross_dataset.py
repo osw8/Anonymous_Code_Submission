@@ -13,7 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 
-PATIENT_BUDGET_PROTOCOL = 'nested_complete_patients_fixed_dev_dynamic_class_balancing_lpft'
+PATIENT_BUDGET_PROTOCOL = 'nested_complete_patients_train_dev_dynamic_class_balancing_lpft'
 PATIENT_BUDGET_UNIT = 'patient'
 DETECTION_TARGET_BUDGET_SAMPLING = (
     'selected_patients_all_ictal_dynamic_hard_far_one_to_two'
@@ -173,8 +173,8 @@ class PatientBudgetSelection:
             'budget_seed': self.budget_seed,
             'protocol': self.protocol,
             'negative_to_positive_ratio': self.negative_to_positive_ratio,
-            'budget_scope': 'target_train_complete_patients',
-            'dev_policy': 'fixed_full_target_dev_excluded_from_budget',
+            'budget_scope': 'target_train_and_dev_complete_patients',
+            'dev_policy': 'same_percentage_nested_complete_patients',
             'patient_ordering': 'deterministic_patient_hash',
             'target_sampling': (
                 DETECTION_TARGET_BUDGET_SAMPLING
@@ -305,55 +305,6 @@ def _select_patient_split(
     return selection, audit
 
 
-def _select_fixed_dev_split(
-    frame: pd.DataFrame,
-    dataset: str,
-    budget_seed: int,
-    requested_percentage: float,
-) -> tuple[PatientSplitSelection, pd.DataFrame]:
-    split_frame = frame.loc[frame['split'].astype(str) == 'dev'].copy()
-    positive = split_frame.loc[split_frame['label'].astype(int) == 1].copy()
-    negative = split_frame.loc[split_frame['label'].astype(int) == 0].copy()
-    if positive.empty or negative.empty:
-        raise ValueError('Fixed target dev requires both classes')
-    ranked = _patient_order(
-        split_frame, dataset, 'dev', budget_seed,
-    )
-    selection = PatientSplitSelection(
-        split='dev',
-        total_patient_count=len(ranked),
-        selected_patient_count=len(ranked),
-        total_positive_clip_count=len(positive),
-        total_negative_clip_count=len(negative),
-        selected_positive_clip_count=len(positive),
-        eligible_negative_clip_count=len(negative),
-        selected_dev_negative_clip_count=len(negative),
-        selected_patients=tuple(ranked),
-        selected_positive_clip_ids=tuple(sorted(positive['clip_id'].astype(str))),
-        eligible_negative_clip_ids=tuple(sorted(negative['clip_id'].astype(str))),
-        selected_train_negative_clip_ids=tuple(),
-        selected_dev_negative_clip_ids=tuple(sorted(negative['clip_id'].astype(str))),
-    )
-    patient_counts = split_frame.assign(
-        patient_id=split_frame['patient_id'].astype(str),
-        _label=split_frame['label'].astype(int),
-    ).groupby('patient_id').agg(
-        clip_count=('clip_id', 'size'),
-        positive_clip_count=('_label', lambda values: int((values == 1).sum())),
-        negative_clip_count=('_label', lambda values: int((values == 0).sum())),
-    )
-    audit = pd.DataFrame({
-        'split': 'dev',
-        'patient_id': ranked,
-        'rank': list(range(1, len(ranked) + 1)),
-        'selected': True,
-        'budget_percent': float(requested_percentage),
-        'budget_seed': int(budget_seed),
-        'selection_policy': 'fixed_full_target_dev',
-    }).join(patient_counts, on='patient_id')
-    return selection, audit
-
-
 def select_budget_patients(
     manifest_path: str | Path,
     dataset: str,
@@ -398,8 +349,9 @@ def select_budget_patients(
         frame, task, dataset, 'train', percentage, budget_seed,
         negative_to_positive_ratio,
     )
-    dev, dev_audit = _select_fixed_dev_split(
-        frame, dataset, budget_seed, percentage,
+    dev, dev_audit = _select_patient_split(
+        frame, task, dataset, 'dev', percentage, budget_seed,
+        negative_to_positive_ratio,
     )
     fingerprint_payload = {
         'budget_unit': PATIENT_BUDGET_UNIT,
@@ -409,8 +361,8 @@ def select_budget_patients(
         'budget_seed': int(budget_seed),
         'protocol': PATIENT_BUDGET_PROTOCOL,
         'negative_to_positive_ratio': float(negative_to_positive_ratio),
-        'budget_scope': 'target_train_complete_patients',
-        'dev_policy': 'fixed_full_target_dev_excluded_from_budget',
+        'budget_scope': 'target_train_and_dev_complete_patients',
+        'dev_policy': 'same_percentage_nested_complete_patients',
         'patient_ordering': 'deterministic_patient_hash',
         'target_sampling': (
             DETECTION_TARGET_BUDGET_SAMPLING

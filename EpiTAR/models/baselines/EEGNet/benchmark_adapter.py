@@ -674,7 +674,7 @@ def recover_run_summary_for_interpretability(spec):
         'threshold_source': (
             'source_dev_max_f1'
             if spec.budget_percent == 0.0
-            else 'fixed_target_dev_max_f1'
+            else 'budgeted_target_dev_max_f1'
         ),
         'metrics': json.loads(metrics_path.read_text(encoding='utf-8')),
         'recovered_after_post_evaluation_interpretability_failure': True,

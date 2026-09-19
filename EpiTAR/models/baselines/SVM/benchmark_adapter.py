@@ -604,8 +604,8 @@ def run(args: argparse.Namespace) -> None:
             budget_selection.clip_ids('dev'),
             'dev',
         )
-        threshold_source = 'fixed_target_dev_max_f1'
-        selection_metric = 'fixed_target_dev_auroc'
+        threshold_source = 'budgeted_target_dev_max_f1'
+        selection_metric = 'budgeted_target_dev_auroc'
     target_test = load_manifest(target_root, "test")
     x_dev, y_dev, dev_rows = load_features(
         selection_root,
@@ -810,7 +810,7 @@ def run(args: argparse.Namespace) -> None:
         "source_dev_auroc": (
             best_score if budget_selection is None else None
         ),
-        'fixed_target_dev_auroc': (
+        'budgeted_target_dev_auroc': (
             best_score if budget_selection is not None else None
         ),
         'validation_auroc': best_score,
