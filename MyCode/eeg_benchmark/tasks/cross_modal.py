@@ -2147,7 +2147,7 @@ def audit_cross_modal_cache(
             'zero_shot_threshold': 'source_dev_max_f1',
             'budget_ft_model_selection': 'target_dev_auroc',
             'budget_ft_threshold': 'target_dev_max_f1',
-            'budget_scope': 'target_train_complete_seizure_events',
+            'budget_scope': 'target_train_complete_patients',
             'target_dev_policy': 'fixed_full_target_dev_excluded_from_budget',
             'target_test_role': 'single_final_evaluation_and_posthoc_interpretability_only',
             'budget_training': {
@@ -2156,9 +2156,9 @@ def audit_cross_modal_cache(
                 'learning_rate': 'model_specific_head_and_backbone_target_lr',
                 'patience': 10,
                 'target_sampling': (
-                    'complete_event_all_ictal_dynamic_hard_far_one_to_two'
+                    'selected_patients_all_ictal_dynamic_hard_far_one_to_two'
                     if task == 'detection'
-                    else 'complete_event_all_preictal_dynamic_patient_balanced_interictal_one_to_one'
+                    else 'selected_patients_all_preictal_dynamic_patient_balanced_interictal_one_to_one'
                 ),
                 'source_rehearsal_sampling': (
                     'patient_class_balanced_one_to_two'

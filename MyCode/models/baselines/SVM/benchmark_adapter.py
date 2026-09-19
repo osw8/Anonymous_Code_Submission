@@ -26,7 +26,7 @@ if str(BENCHMARK_ROOT) not in sys.path:
     sys.path.insert(0, str(BENCHMARK_ROOT))
 
 from eeg_benchmark.engine import align_preprocessed_clip, build_channel_union
-from eeg_benchmark.tasks.cross_dataset import event_balanced_rehearsal_indices
+from eeg_benchmark.tasks.cross_dataset import patient_budget_rehearsal_indices
 from eeg_benchmark.engine import evaluate_predictions, save_json, select_f1_threshold
 from eeg_benchmark.engine import configure_reproducibility
 from eeg_benchmark.tasks.cross_dataset import add_mission_arguments, build_spec, prepare_mission, resolve_in_domain_source_checkpoint, validate_mode_args, validate_zero_shot_reference
@@ -677,7 +677,7 @@ def run(args: argparse.Namespace) -> None:
                 budget_selection.clip_ids('train'),
                 'train',
             )
-            rehearsal_indices, rehearsal_report = event_balanced_rehearsal_indices(
+            rehearsal_indices, rehearsal_report = patient_budget_rehearsal_indices(
                 target_train,
                 source_train,
                 seed=spec.undersample_seed,

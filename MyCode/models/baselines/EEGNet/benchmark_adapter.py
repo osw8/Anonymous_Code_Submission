@@ -28,7 +28,7 @@ for value in (BENCHMARK_ROOT, EEGNET_ROOT):
 from eeg_benchmark.engine import align_preprocessed_clip, build_channel_union
 from eeg_benchmark.tasks.cross_dataset import (
     SOURCE_REHEARSAL_FRACTION,
-    event_balanced_rehearsal_indices,
+    patient_budget_rehearsal_indices,
 )
 from eeg_benchmark.engine import evaluate_predictions, select_f1_threshold
 from eeg_benchmark.engine import print_model_information, save_json, setup_run_logger
@@ -69,7 +69,7 @@ class ClipSequence:
         task: str | None = None,
         sampling_audit_root: Path | None = None,
         patient_balanced: bool = False,
-        event_budget_training: bool = False,
+        patient_budget_training: bool = False,
         source_rehearsal: tuple[Path, pd.DataFrame] | None = None,
         source_rehearsal_fraction: float = SOURCE_REHEARSAL_FRACTION,
     ) -> None:
@@ -98,7 +98,7 @@ class ClipSequence:
         self.dataset_key = dataset_key
         self.task = task
         self.dynamic_detection_sampling = bool(
-            (task == 'detection' or event_budget_training)
+            (task == 'detection' or patient_budget_training)
             and dataset_key in DETECTION_UNDERSAMPLE_DATASETS
         )
         self.dynamic_prediction_sampling = bool(
@@ -177,7 +177,7 @@ class ClipSequence:
             self.epoch += 1
             target = self.full_frame.iloc[:self.target_frame_count].reset_index(drop=True)
             source = self.full_frame.iloc[self.target_frame_count:].reset_index(drop=True)
-            self.indices, report = event_balanced_rehearsal_indices(
+            self.indices, report = patient_budget_rehearsal_indices(
                 target, source, self.seed, self.epoch,
                 rehearsal_fraction=self.source_rehearsal_fraction,
                 target_dataset=str(self.dataset_key),
@@ -1276,7 +1276,7 @@ def run(args: argparse.Namespace) -> None:
             task=spec.task,
             sampling_audit_root=spec.output_dir / 'sampling' / 'target_train',
             patient_balanced=False,
-            event_budget_training=True,
+            patient_budget_training=True,
             source_rehearsal=(source_root, source_train),
             source_rehearsal_fraction=args.source_rehearsal_fraction,
         ))

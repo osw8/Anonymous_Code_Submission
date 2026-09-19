@@ -1,5 +1,4 @@
 
-# Defines cross-dataset and cross-time benchmark orchestration.
 from __future__ import annotations
 
 
@@ -14,14 +13,13 @@ from pathlib import Path
 import pandas as pd
 
 
-EVENT_BUDGET_PROTOCOL = 'nested_complete_seizure_events_fixed_dev_dynamic_context_lpft'
-DETECTION_BUDGET_UNIT = 'seizure_event_bundle'
-PREDICTION_BUDGET_UNIT = 'seizure_event'
+PATIENT_BUDGET_PROTOCOL = 'nested_complete_patients_fixed_dev_dynamic_class_balancing_lpft'
+PATIENT_BUDGET_UNIT = 'patient'
 DETECTION_TARGET_BUDGET_SAMPLING = (
-    'complete_event_all_ictal_dynamic_hard_far_one_to_two'
+    'selected_patients_all_ictal_dynamic_hard_far_one_to_two'
 )
 PREDICTION_TARGET_BUDGET_SAMPLING = (
-    'complete_event_all_preictal_dynamic_patient_balanced_interictal_one_to_one'
+    'selected_patients_all_preictal_dynamic_patient_balanced_interictal_one_to_one'
 )
 PREDICTION_SOURCE_TRAIN_SAMPLING = (
     'epoch_dynamic_keep_all_preictal_match_interictal_one_to_one'
@@ -36,7 +34,6 @@ PREDICTION_DATASET_ANCHORS = {
 
 
 def prediction_anchor_label(dataset: str) -> int:
-    """Return the class retained in full by the dataset-aware sampler."""
     key = str(dataset).strip().lower().replace('-', '').replace('_', '')
     return 0 if PREDICTION_DATASET_ANCHORS.get(key, 'preictal') == 'interictal' else 1
 
@@ -64,7 +61,7 @@ def prediction_budget_sampling_policy_for_dataset(dataset: str) -> str:
     matched = 'interictal' if anchor == 'preictal' else 'preictal'
     if anchor == 'preictal':
         return PREDICTION_TARGET_BUDGET_SAMPLING
-    return f'complete_event_all_{anchor}_dynamic_{matched}_one_to_one'
+    return f'selected_patients_all_{anchor}_dynamic_{matched}_one_to_one'
 
 
 def source_rehearsal_sampling_policy(
@@ -83,16 +80,16 @@ def round_half_up(value: float) -> int:
 
 
 @dataclass(frozen=True)
-class EventSplitSelection:
+class PatientSplitSelection:
     split: str
-    total_event_count: int
-    selected_event_count: int
+    total_patient_count: int
+    selected_patient_count: int
     total_positive_clip_count: int
     total_negative_clip_count: int
     selected_positive_clip_count: int
     eligible_negative_clip_count: int
     selected_dev_negative_clip_count: int
-    selected_events: tuple[str, ...]
+    selected_patients: tuple[str, ...]
     selected_positive_clip_ids: tuple[str, ...]
     eligible_negative_clip_ids: tuple[str, ...]
     selected_train_negative_clip_ids: tuple[str, ...]
@@ -116,7 +113,7 @@ class EventSplitSelection:
     def to_dict(self) -> dict[str, object]:
         result = asdict(self)
         for key in (
-            'selected_events', 'selected_positive_clip_ids',
+            'selected_patients', 'selected_positive_clip_ids',
             'eligible_negative_clip_ids', 'selected_train_negative_clip_ids',
             'selected_dev_negative_clip_ids',
         ):
@@ -132,8 +129,8 @@ class EventSplitSelection:
         original_total = self.total_positive_clip_count + self.total_negative_clip_count
         result['selected_negative_clip_count'] = selected_negative_count
         result['selected_clip_count'] = selected_total
-        result['achieved_event_budget_fraction'] = float(
-            self.selected_event_count / self.total_event_count
+        result['achieved_patient_budget_fraction'] = float(
+            self.selected_patient_count / self.total_patient_count
         )
         result['loader_pool_fraction'] = float(selected_total / original_total)
         result['original_positive_fraction'] = float(
@@ -146,7 +143,7 @@ class EventSplitSelection:
 
 
 @dataclass(frozen=True)
-class EventBudgetSelection:
+class PatientBudgetSelection:
     task: str
     dataset: str
     percentage: float
@@ -154,8 +151,8 @@ class EventBudgetSelection:
     protocol: str
     negative_to_positive_ratio: float
     source_rehearsal_fraction: float
-    train: EventSplitSelection
-    dev: EventSplitSelection
+    train: PatientSplitSelection
+    dev: PatientSplitSelection
     fingerprint: str
 
     def clip_ids(self, split: str) -> tuple[str, ...]:
@@ -168,32 +165,17 @@ class EventBudgetSelection:
     def to_dict(self) -> dict[str, object]:
         train_payload = self.train.to_dict()
         dev_payload = self.dev.to_dict()
-        chronological = self.protocol == 'nested_chronological_adapt_prefix_fixed_dev_future_test'
         return {
-            'budget_unit': (
-                DETECTION_BUDGET_UNIT
-                if self.task in {'detection', 'localization'}
-                else PREDICTION_BUDGET_UNIT
-            ),
+            'budget_unit': PATIENT_BUDGET_UNIT,
             'task': self.task,
             'dataset': self.dataset,
             'percentage': self.percentage,
             'budget_seed': self.budget_seed,
             'protocol': self.protocol,
             'negative_to_positive_ratio': self.negative_to_positive_ratio,
-            'budget_scope': (
-                'target_adapt_chronological_prefix_events'
-                if chronological else 'target_train_complete_seizure_events'
-            ),
-            'dev_policy': (
-                'fixed_chronological_dev_before_adapt'
-                if chronological else 'fixed_full_target_dev_excluded_from_budget'
-            ),
-            'event_ordering': (
-                'per_patient_chronological_adapt_prefix'
-                if chronological
-                else 'deterministic_patient_round_robin_then_event_hash'
-            ),
+            'budget_scope': 'target_train_complete_patients',
+            'dev_policy': 'fixed_full_target_dev_excluded_from_budget',
+            'patient_ordering': 'deterministic_patient_hash',
             'target_sampling': (
                 DETECTION_TARGET_BUDGET_SAMPLING
                 if self.task in {'detection', 'localization'}
@@ -212,72 +194,33 @@ class EventBudgetSelection:
         }
 
 
-def event_rank_key(
+def patient_rank_key(
     dataset: str,
     split: str,
-    event_key: str,
+    patient_id: str,
     budget_seed: int,
 ) -> str:
     return hashlib.sha256(
-        f'{budget_seed}:{dataset}:{split}:{event_key}'.encode('utf-8')
+        f'{budget_seed}:{dataset}:{split}:patient:{patient_id}'.encode('utf-8')
     ).hexdigest()
 
 
-def _patient_balanced_event_order(
-    positive: pd.DataFrame,
+def _patient_order(
+    frame: pd.DataFrame,
     dataset: str,
     split: str,
     budget_seed: int,
 ) -> list[str]:
-    event_patient = (
-        positive[['_event_key', 'patient_id']]
-        .drop_duplicates('_event_key')
-        .assign(patient_id=lambda frame: frame['patient_id'].astype(str))
+    patients = frame['patient_id'].astype(str).unique().tolist()
+    return sorted(
+        patients,
+        key=lambda patient_id: patient_rank_key(
+            dataset, split, patient_id, budget_seed,
+        ),
     )
-    patient_events: dict[str, list[str]] = {}
-    for patient_id, group in event_patient.groupby('patient_id', sort=False):
-        patient_events[str(patient_id)] = sorted(
-            group['_event_key'].astype(str),
-            key=lambda item: event_rank_key(
-                dataset, split, item, budget_seed,
-            ),
-        )
-    ranked_patients = sorted(
-        patient_events,
-        key=lambda patient_id: hashlib.sha256(
-            f'{budget_seed}:{dataset}:{split}:patient:{patient_id}'.encode('utf-8')
-        ).hexdigest(),
-    )
-    ordered: list[str] = []
-    depth = 0
-    while len(ordered) < len(event_patient):
-        added = False
-        for patient_id in ranked_patients:
-            events = patient_events[patient_id]
-            if depth < len(events):
-                ordered.append(events[depth])
-                added = True
-        if not added:
-            break
-        depth += 1
-    if len(ordered) != len(event_patient) or len(set(ordered)) != len(ordered):
-        raise RuntimeError('Patient-balanced event ordering is incomplete or duplicated')
-    return ordered
 
 
-def _event_key(frame: pd.DataFrame) -> pd.Series:
-    event_id = frame['event_id'].fillna('').astype(str).str.strip()
-    missing = event_id.eq('')
-    if missing.any():
-        examples = frame.loc[missing, 'clip_id'].astype(str).head(10).tolist()
-        raise ValueError(
-            'Positive clips require event_id for seizure-event budgeting: '
-            f'{examples}'
-        )
-    return frame['patient_id'].astype(str) + '::' + event_id
-
-
-def _select_event_split(
+def _select_patient_split(
     frame: pd.DataFrame,
     task: str,
     dataset: str,
@@ -285,49 +228,55 @@ def _select_event_split(
     percentage: float,
     budget_seed: int,
     negative_to_positive_ratio: float,
-) -> tuple[EventSplitSelection, pd.DataFrame]:
+) -> tuple[PatientSplitSelection, pd.DataFrame]:
+    del task, negative_to_positive_ratio
     split_frame = frame.loc[frame['split'].astype(str) == split].copy()
-    positive = split_frame.loc[split_frame['label'].astype(int) == 1].copy()
-    negative = split_frame.loc[split_frame['label'].astype(int) == 0].copy()
+    labels = split_frame['label'].astype(int)
+    positive = split_frame.loc[labels == 1].copy()
+    negative = split_frame.loc[labels == 0].copy()
     if positive.empty or negative.empty:
-        raise ValueError(f'Event budget requires both classes in target {split}')
-    eligible_negative = negative.copy()
-    if eligible_negative.empty:
-        raise ValueError(
-            f'Target {split} has no negative clips for event-budget sampling'
-        )
-    positive['_event_key'] = _event_key(positive)
-    ranked = _patient_balanced_event_order(
-        positive, dataset, split, budget_seed,
+        raise ValueError(f'Patient budget requires both classes in target {split}')
+    ranked = _patient_order(
+        split_frame, dataset, split, budget_seed,
     )
     selected_count = max(
         1,
         round_half_up(len(ranked) * float(percentage) / 100.0),
     )
-    selected_events = tuple(ranked[:selected_count])
-    selected_event_set = set(selected_events)
-    selected_positive = positive.loc[
-        positive['_event_key'].isin(selected_event_set)
+    selected_patients = tuple(ranked[:selected_count])
+    selected_patient_set = set(selected_patients)
+    selected_frame = split_frame.loc[
+        split_frame['patient_id'].astype(str).isin(selected_patient_set)
     ].copy()
-    selected_train_negative = eligible_negative.head(0)
-    selected_dev_negative = eligible_negative.head(0)
-    selection = EventSplitSelection(
+    selected_positive = selected_frame.loc[
+        selected_frame['label'].astype(int) == 1
+    ].copy()
+    selected_negative = selected_frame.loc[
+        selected_frame['label'].astype(int) == 0
+    ].copy()
+    if selected_positive.empty or selected_negative.empty:
+        raise ValueError(
+            f'Patient budget selected a single-class target {split} subset'
+        )
+    selected_train_negative = selected_negative if split == 'train' else selected_negative.head(0)
+    selected_dev_negative = selected_negative if split == 'dev' else selected_negative.head(0)
+    selection = PatientSplitSelection(
         split=split,
-        total_event_count=len(ranked),
-        selected_event_count=selected_count,
+        total_patient_count=len(ranked),
+        selected_patient_count=selected_count,
         total_positive_clip_count=len(positive),
-        total_negative_clip_count=len(eligible_negative),
+        total_negative_clip_count=len(negative),
         selected_positive_clip_count=len(selected_positive),
-        eligible_negative_clip_count=len(eligible_negative),
+        eligible_negative_clip_count=len(selected_negative),
         selected_dev_negative_clip_count=(
             len(selected_dev_negative) if split == 'dev' else 0
         ),
-        selected_events=selected_events,
+        selected_patients=selected_patients,
         selected_positive_clip_ids=tuple(sorted(
             selected_positive['clip_id'].astype(str)
         )),
         eligible_negative_clip_ids=tuple(sorted(
-            eligible_negative['clip_id'].astype(str)
+            selected_negative['clip_id'].astype(str)
         )),
         selected_train_negative_clip_ids=tuple(sorted(
             selected_train_negative['clip_id'].astype(str)
@@ -337,19 +286,22 @@ def _select_event_split(
             if split == 'dev' else tuple()
         ),
     )
-    event_counts = positive.groupby('_event_key').agg(
-        patient_id=('patient_id', 'first'),
-        event_id=('event_id', 'first'),
-        positive_clip_count=('clip_id', 'size'),
+    patient_counts = split_frame.assign(
+        patient_id=split_frame['patient_id'].astype(str),
+        _label=split_frame['label'].astype(int),
+    ).groupby('patient_id').agg(
+        clip_count=('clip_id', 'size'),
+        positive_clip_count=('_label', lambda values: int((values == 1).sum())),
+        negative_clip_count=('_label', lambda values: int((values == 0).sum())),
     )
     audit = pd.DataFrame({
         'split': split,
-        'event_key': ranked,
+        'patient_id': ranked,
         'rank': list(range(1, len(ranked) + 1)),
-        'selected': [item in selected_event_set for item in ranked],
+        'selected': [item in selected_patient_set for item in ranked],
         'budget_percent': float(percentage),
         'budget_seed': int(budget_seed),
-    }).join(event_counts, on='event_key')
+    }).join(patient_counts, on='patient_id')
     return selection, audit
 
 
@@ -358,49 +310,51 @@ def _select_fixed_dev_split(
     dataset: str,
     budget_seed: int,
     requested_percentage: float,
-) -> tuple[EventSplitSelection, pd.DataFrame]:
+) -> tuple[PatientSplitSelection, pd.DataFrame]:
     split_frame = frame.loc[frame['split'].astype(str) == 'dev'].copy()
     positive = split_frame.loc[split_frame['label'].astype(int) == 1].copy()
     negative = split_frame.loc[split_frame['label'].astype(int) == 0].copy()
     if positive.empty or negative.empty:
         raise ValueError('Fixed target dev requires both classes')
-    positive['_event_key'] = _event_key(positive)
-    ranked = _patient_balanced_event_order(
-        positive, dataset, 'dev', budget_seed,
+    ranked = _patient_order(
+        split_frame, dataset, 'dev', budget_seed,
     )
-    selection = EventSplitSelection(
+    selection = PatientSplitSelection(
         split='dev',
-        total_event_count=len(ranked),
-        selected_event_count=len(ranked),
+        total_patient_count=len(ranked),
+        selected_patient_count=len(ranked),
         total_positive_clip_count=len(positive),
         total_negative_clip_count=len(negative),
         selected_positive_clip_count=len(positive),
         eligible_negative_clip_count=len(negative),
         selected_dev_negative_clip_count=len(negative),
-        selected_events=tuple(ranked),
+        selected_patients=tuple(ranked),
         selected_positive_clip_ids=tuple(sorted(positive['clip_id'].astype(str))),
         eligible_negative_clip_ids=tuple(sorted(negative['clip_id'].astype(str))),
         selected_train_negative_clip_ids=tuple(),
         selected_dev_negative_clip_ids=tuple(sorted(negative['clip_id'].astype(str))),
     )
-    event_counts = positive.groupby('_event_key').agg(
-        patient_id=('patient_id', 'first'),
-        event_id=('event_id', 'first'),
-        positive_clip_count=('clip_id', 'size'),
+    patient_counts = split_frame.assign(
+        patient_id=split_frame['patient_id'].astype(str),
+        _label=split_frame['label'].astype(int),
+    ).groupby('patient_id').agg(
+        clip_count=('clip_id', 'size'),
+        positive_clip_count=('_label', lambda values: int((values == 1).sum())),
+        negative_clip_count=('_label', lambda values: int((values == 0).sum())),
     )
     audit = pd.DataFrame({
         'split': 'dev',
-        'event_key': ranked,
+        'patient_id': ranked,
         'rank': list(range(1, len(ranked) + 1)),
         'selected': True,
         'budget_percent': float(requested_percentage),
         'budget_seed': int(budget_seed),
         'selection_policy': 'fixed_full_target_dev',
-    }).join(event_counts, on='event_key')
+    }).join(patient_counts, on='patient_id')
     return selection, audit
 
 
-def select_budget_events(
+def select_budget_patients(
     manifest_path: str | Path,
     dataset: str,
     percentage: float,
@@ -409,17 +363,17 @@ def select_budget_events(
     negative_to_positive_ratio: float | None = None,
     source_rehearsal_fraction: float = 0.25,
     task: str = 'detection',
-) -> EventBudgetSelection:
+) -> PatientBudgetSelection:
     manifest_path = Path(manifest_path)
     frame = pd.read_csv(
         manifest_path,
         dtype={'patient_id': str, 'clip_id': str, 'event_id': str},
     )
-    required = {'patient_id', 'clip_id', 'split', 'label', 'event_id'}
+    required = {'patient_id', 'clip_id', 'split', 'label'}
     missing = required - set(frame.columns)
     if missing:
         raise ValueError(
-            f'Manifest lacks seizure-event budget columns {sorted(missing)}: '
+            f'Manifest lacks patient budget columns {sorted(missing)}: '
             f'{manifest_path}'
         )
     if 'event_id' not in frame.columns:
@@ -431,7 +385,7 @@ def select_budget_events(
         )[:10]
         raise ValueError(f'Budgeting requires globally unique clip_id: {examples}')
     if percentage <= 0.0 or percentage > 100.0:
-        raise ValueError('Positive event budget percentage must be in (0, 100]')
+        raise ValueError('Patient budget percentage must be in (0, 100]')
     if task not in {'detection', 'prediction'}:
         raise ValueError(f'Unsupported budget task: {task}')
     if negative_to_positive_ratio is None:
@@ -440,7 +394,7 @@ def select_budget_events(
         raise ValueError('Negative-to-positive ratio must be positive')
     if not 0.0 < source_rehearsal_fraction < 1.0:
         raise ValueError('Source rehearsal fraction must be in (0, 1)')
-    train, train_audit = _select_event_split(
+    train, train_audit = _select_patient_split(
         frame, task, dataset, 'train', percentage, budget_seed,
         negative_to_positive_ratio,
     )
@@ -448,20 +402,16 @@ def select_budget_events(
         frame, dataset, budget_seed, percentage,
     )
     fingerprint_payload = {
-        'budget_unit': (
-            DETECTION_BUDGET_UNIT
-            if task == 'detection'
-            else PREDICTION_BUDGET_UNIT
-        ),
+        'budget_unit': PATIENT_BUDGET_UNIT,
         'task': task,
         'dataset': dataset,
         'percentage': float(percentage),
         'budget_seed': int(budget_seed),
-        'protocol': EVENT_BUDGET_PROTOCOL,
+        'protocol': PATIENT_BUDGET_PROTOCOL,
         'negative_to_positive_ratio': float(negative_to_positive_ratio),
-        'budget_scope': 'target_train_complete_seizure_events',
+        'budget_scope': 'target_train_complete_patients',
         'dev_policy': 'fixed_full_target_dev_excluded_from_budget',
-        'event_ordering': 'deterministic_patient_round_robin_then_event_hash',
+        'patient_ordering': 'deterministic_patient_hash',
         'target_sampling': (
             DETECTION_TARGET_BUDGET_SAMPLING
             if task == 'detection'
@@ -471,8 +421,8 @@ def select_budget_events(
             task, negative_to_positive_ratio,
         ),
         'source_rehearsal_fraction': float(source_rehearsal_fraction),
-        'train_events': list(train.selected_events),
-        'dev_events': list(dev.selected_events),
+        'train_patients': list(train.selected_patients),
+        'dev_patients': list(dev.selected_patients),
         'train_clip_ids': list(train.selected_clip_ids),
         'dev_clip_ids': list(dev.selected_clip_ids),
     }
@@ -481,12 +431,12 @@ def select_budget_events(
             fingerprint_payload, sort_keys=True, separators=(',', ':')
         ).encode('utf-8')
     ).hexdigest()
-    selection = EventBudgetSelection(
+    selection = PatientBudgetSelection(
         task=task,
         dataset=dataset,
         percentage=float(percentage),
         budget_seed=int(budget_seed),
-        protocol=EVENT_BUDGET_PROTOCOL,
+        protocol=PATIENT_BUDGET_PROTOCOL,
         negative_to_positive_ratio=float(negative_to_positive_ratio),
         source_rehearsal_fraction=float(source_rehearsal_fraction),
         train=train,
@@ -496,9 +446,6 @@ def select_budget_events(
     if output_dir is not None:
         root = Path(output_dir)
         root.mkdir(parents=True, exist_ok=True)
-        patient_audit = root / 'budget_patients.csv'
-        if patient_audit.exists():
-            patient_audit.unlink()
         selected_by_split = {
             'train': set(train.selected_clip_ids),
             'dev': set(dev.selected_clip_ids),
@@ -526,7 +473,7 @@ def select_budget_events(
         clip_audit['budget_seed'] = int(budget_seed)
         clip_audit.to_csv(root / 'budget_clips.csv', index=False)
         pd.concat([train_audit, dev_audit], ignore_index=True).to_csv(
-            root / 'budget_events.csv', index=False
+            root / 'budget_patients.csv', index=False
         )
         (root / 'budget_protocol.json').write_text(
             json.dumps(selection.to_dict(), ensure_ascii=False, indent=2),
@@ -535,7 +482,7 @@ def select_budget_events(
     return selection
 
 
-def select_temporal_prefix_budget_events(
+def select_temporal_budget_patients(
     manifest_path: str | Path,
     dataset: str,
     percentage: float,
@@ -544,173 +491,17 @@ def select_temporal_prefix_budget_events(
     negative_to_positive_ratio: float | None = None,
     source_rehearsal_fraction: float = 0.25,
     task: str = 'detection',
-) -> EventBudgetSelection:
-    manifest_path = Path(manifest_path)
-    frame = pd.read_csv(
-        manifest_path,
-        dtype={'patient_id': str, 'clip_id': str, 'event_id': str},
-    )
-    required = {
-        'patient_id', 'clip_id', 'split', 'label', 'event_id',
-        'temporal_block', 'temporal_budget_percent',
-    }
-    missing = required - set(frame.columns)
-    if missing:
-        raise ValueError(
-            f'Cross-time manifest lacks temporal budget columns {sorted(missing)}: '
-            f'{manifest_path}'
-        )
-    if percentage <= 0.0 or percentage > 100.0:
-        raise ValueError('Temporal budget percentage must be in (0, 100]')
-    if task not in {'detection', 'prediction'}:
-        raise ValueError(f'Unsupported temporal budget task: {task}')
-    if negative_to_positive_ratio is None:
-        negative_to_positive_ratio = 2.0 if task == 'detection' else 1.0
-
-    train_frame = frame.loc[frame['split'].astype(str) == 'train'].copy()
-    dev_frame = frame.loc[frame['split'].astype(str) == 'dev'].copy()
-    train_positive = train_frame.loc[train_frame['label'].astype(int) == 1].copy()
-    train_negative = train_frame.loc[train_frame['label'].astype(int) == 0].copy()
-    dev_positive = dev_frame.loc[dev_frame['label'].astype(int) == 1].copy()
-    dev_negative = dev_frame.loc[dev_frame['label'].astype(int) == 0].copy()
-    if train_positive.empty or train_negative.empty:
-        raise ValueError('Cross-time Adapt train split requires both classes')
-    if dev_positive.empty or dev_negative.empty:
-        raise ValueError('Cross-time Dev split requires both classes')
-
-    train_positive['_event_key'] = _event_key(train_positive)
-    dev_positive['_event_key'] = _event_key(dev_positive)
-    selected_positive = train_positive.loc[
-        train_positive['temporal_budget_percent'].astype(float) <= float(percentage)
-    ].copy()
-    if selected_positive.empty:
-        raise ValueError('Cross-time temporal budget selected no positive clips')
-    selected_events = tuple(sorted(selected_positive['_event_key'].astype(str).unique()))
-    ranked_train_events = tuple(sorted(train_positive['_event_key'].astype(str).unique()))
-    ranked_dev_events = tuple(sorted(dev_positive['_event_key'].astype(str).unique()))
-
-    train_selection = EventSplitSelection(
-        split='train',
-        total_event_count=len(ranked_train_events),
-        selected_event_count=len(selected_events),
-        total_positive_clip_count=len(train_positive),
-        total_negative_clip_count=len(train_negative),
-        selected_positive_clip_count=len(selected_positive),
-        eligible_negative_clip_count=len(train_negative),
-        selected_dev_negative_clip_count=0,
-        selected_events=selected_events,
-        selected_positive_clip_ids=tuple(sorted(selected_positive['clip_id'].astype(str))),
-        eligible_negative_clip_ids=tuple(sorted(train_negative['clip_id'].astype(str))),
-        selected_train_negative_clip_ids=tuple(),
-        selected_dev_negative_clip_ids=tuple(),
-    )
-    dev_selection = EventSplitSelection(
-        split='dev',
-        total_event_count=len(ranked_dev_events),
-        selected_event_count=len(ranked_dev_events),
-        total_positive_clip_count=len(dev_positive),
-        total_negative_clip_count=len(dev_negative),
-        selected_positive_clip_count=len(dev_positive),
-        eligible_negative_clip_count=len(dev_negative),
-        selected_dev_negative_clip_count=len(dev_negative),
-        selected_events=ranked_dev_events,
-        selected_positive_clip_ids=tuple(sorted(dev_positive['clip_id'].astype(str))),
-        eligible_negative_clip_ids=tuple(sorted(dev_negative['clip_id'].astype(str))),
-        selected_train_negative_clip_ids=tuple(),
-        selected_dev_negative_clip_ids=tuple(sorted(dev_negative['clip_id'].astype(str))),
-    )
-    fingerprint_payload = {
-        'budget_unit': DETECTION_BUDGET_UNIT if task == 'detection' else PREDICTION_BUDGET_UNIT,
-        'task': task,
-        'dataset': dataset,
-        'percentage': float(percentage),
-        'budget_seed': int(budget_seed),
-        'protocol': 'nested_chronological_adapt_prefix_fixed_dev_future_test',
-        'negative_to_positive_ratio': float(negative_to_positive_ratio),
-        'budget_scope': 'target_adapt_chronological_prefix_events',
-        'dev_policy': 'fixed_chronological_dev_before_adapt',
-        'test_policy': 'fixed_chronological_future_after_adapt',
-        'event_ordering': 'per_patient_chronological_adapt_prefix',
-        'train_events': list(train_selection.selected_events),
-        'dev_events': list(dev_selection.selected_events),
-        'train_clip_ids': list(train_selection.selected_clip_ids),
-        'dev_clip_ids': list(dev_selection.selected_clip_ids),
-    }
-    fingerprint = hashlib.sha256(
-        json.dumps(
-            fingerprint_payload, sort_keys=True, separators=(',', ':')
-        ).encode('utf-8')
-    ).hexdigest()
-    selection = EventBudgetSelection(
-        task=task,
+) -> PatientBudgetSelection:
+    return select_budget_patients(
+        manifest_path=manifest_path,
         dataset=dataset,
-        percentage=float(percentage),
-        budget_seed=int(budget_seed),
-        protocol=str(fingerprint_payload['protocol']),
-        negative_to_positive_ratio=float(negative_to_positive_ratio),
-        source_rehearsal_fraction=float(source_rehearsal_fraction),
-        train=train_selection,
-        dev=dev_selection,
-        fingerprint=fingerprint,
+        percentage=percentage,
+        budget_seed=budget_seed,
+        output_dir=output_dir,
+        negative_to_positive_ratio=negative_to_positive_ratio,
+        source_rehearsal_fraction=source_rehearsal_fraction,
+        task=task,
     )
-    if output_dir is not None:
-        root = Path(output_dir)
-        root.mkdir(parents=True, exist_ok=True)
-        selected_by_split = {
-            'train': set(train_selection.selected_clip_ids),
-            'dev': set(dev_selection.selected_clip_ids),
-        }
-        clip_columns = [
-            item for item in (
-                'split', 'temporal_block', 'temporal_budget_percent',
-                'patient_id', 'clip_id', 'label', 'event_id',
-                'source_relative_path', 'timeline_clip_start_seconds',
-                'timeline_clip_end_seconds',
-            ) if item in frame.columns
-        ]
-        clip_audit = frame.loc[
-            frame['split'].astype(str).isin({'train', 'dev'}),
-            clip_columns,
-        ].copy()
-        clip_audit['selected_for_loader'] = [
-            str(row.clip_id) in selected_by_split[str(row.split)]
-            for row in clip_audit.itertuples(index=False)
-        ]
-        clip_audit['sampled_dynamically'] = (
-            clip_audit['split'].astype(str).eq('train')
-            & clip_audit['label'].astype(int).eq(0)
-            & clip_audit['selected_for_loader']
-        )
-        clip_audit['budget_percent'] = float(percentage)
-        clip_audit['budget_seed'] = int(budget_seed)
-        clip_audit.to_csv(root / 'budget_clips.csv', index=False)
-        event_rows = []
-        for event_key in ranked_train_events:
-            event_rows.append({
-                'split': 'train',
-                'event_key': event_key,
-                'selected': event_key in set(selected_events),
-                'budget_percent': float(percentage),
-                'budget_seed': int(budget_seed),
-                'selection_policy': 'chronological_adapt_prefix',
-            })
-        for event_key in ranked_dev_events:
-            event_rows.append({
-                'split': 'dev',
-                'event_key': event_key,
-                'selected': True,
-                'budget_percent': float(percentage),
-                'budget_seed': int(budget_seed),
-                'selection_policy': 'fixed_full_chronological_dev',
-            })
-        pd.DataFrame(event_rows).to_csv(root / 'budget_events.csv', index=False)
-        (root / 'budget_protocol.json').write_text(
-            json.dumps(selection.to_dict(), ensure_ascii=False, indent=2),
-            encoding='utf-8',
-        )
-    return selection
-
-
 
 
 import numpy as np
@@ -849,7 +640,7 @@ def _draw_detection_negatives(
     hard_count = positive_count if not hard.empty else 0
     far_count = positive_count if not far.empty else 0
     if hard_count == 0 and far_count == 0:
-        raise ValueError('Detection event budget has no eligible negative clips')
+        raise ValueError('Detection patient budget has no eligible negative clips')
     if hard_count == 0:
         far_count = 2 * positive_count
     elif far_count == 0:
@@ -868,7 +659,7 @@ def _draw_detection_negatives(
     }
 
 
-def event_balanced_rehearsal_indices(
+def patient_budget_rehearsal_indices(
     target_frame: pd.DataFrame,
     source_frame: pd.DataFrame,
     seed: int,
@@ -893,7 +684,7 @@ def event_balanced_rehearsal_indices(
         target_negative, context_report = _draw_detection_negatives(
             target_frame, target_positive_count, rng,
         )
-        target_policy = 'complete_event_all_ictal_dynamic_hard_far_one_to_two'
+        target_policy = DETECTION_TARGET_BUDGET_SAMPLING
     else:
         negative_ratio = float(prediction_negative_to_positive_ratio)
         if negative_ratio <= 0.0:
@@ -1031,7 +822,7 @@ def mission_sampling_summary(spec, single_fit: bool = False) -> str:
         target = 'not-applicable'
     elif spec.task == 'detection':
         target = (
-            'train nested complete-event budget;all ictal clips;'
+            'train nested complete-patient budget;all selected-patient ictal clips;'
             'dynamic hard-far negative one-to-two;fixed full target dev;'
             f'source-rehearsal={spec.source_rehearsal_fraction:g}x-target;'
             'source-rehearsal-policy=balanced-1:2;'
@@ -1049,13 +840,13 @@ def mission_sampling_summary(spec, single_fit: bool = False) -> str:
             'interictal' if prediction_anchor == 'preictal' else 'preictal'
         )
         prediction_policy = (
-            f'complete selected events;all {prediction_anchor};'
+            f'complete selected patients;all {prediction_anchor};'
             f'dynamic patient-balanced {prediction_matched} 1:1;'
             if math.isclose(prediction_ratio, 1.0)
             else 'patient-event-clip balanced 1:2;'
         )
         target = (
-            'train nested complete-event budget;'
+            'train nested complete-patient budget;'
             f'{prediction_policy}'
             'fixed full target dev;'
             f'source-rehearsal={spec.source_rehearsal_fraction:g}x-target;'
@@ -1835,11 +1626,7 @@ class MissionSpec:
                 if self.budget_percent > 0.0 else 'none'
             ),
             'budget_unit': (
-                DETECTION_BUDGET_UNIT
-                if self.budget_percent > 0.0 and self.task == 'detection'
-                else PREDICTION_BUDGET_UNIT
-                if self.budget_percent > 0.0
-                else 'none'
+                PATIENT_BUDGET_UNIT if self.budget_percent > 0.0 else 'none'
             ),
             'budget_finetune_strategy': (
                 budget_finetune_strategy(self.model)
@@ -2227,7 +2014,7 @@ def validate_cache(task_root: Path, spec: MissionSpec, dataset_key: str) -> dict
     }
 
 
-def prepare_mission(spec: MissionSpec) -> tuple[Path, Path, EventBudgetSelection | None]:
+def prepare_mission(spec: MissionSpec) -> tuple[Path, Path, PatientBudgetSelection | None]:
     source_root = spec.cache_dir(spec.source_dataset)
     target_root = spec.cache_dir(spec.target_dataset)
     source_audit = validate_cache(source_root, spec, spec.source_dataset)
@@ -2257,9 +2044,9 @@ def prepare_mission(spec: MissionSpec) -> tuple[Path, Path, EventBudgetSelection
         return source_root, target_root, None
     budget_task = 'detection' if spec.task == 'localization' else spec.task
     selector = (
-        select_temporal_prefix_budget_events
+        select_temporal_budget_patients
         if spec.mission_type == 'cross_time'
-        else select_budget_events
+        else select_budget_patients
     )
     selection = selector(
         target_root / 'manifest.csv',

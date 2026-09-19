@@ -1046,7 +1046,7 @@ from eeg_benchmark.tasks.cross_dataset import (
 )
 from eeg_benchmark.tasks.cross_dataset import (
     SOURCE_REHEARSAL_FRACTION,
-    event_balanced_rehearsal_indices,
+    patient_budget_rehearsal_indices,
 )
 
 
@@ -1131,7 +1131,7 @@ class UnionClipDataset(Dataset):
         channel_contract: ChannelUnionContract,
         patient_ids: Collection[str] | None = None,
         clip_ids: Collection[str] | None = None,
-        event_budget_training: bool = False,
+        patient_budget_training: bool = False,
         view_seconds_override: float | None = None,
         dataset_key: str | None = None,
         task: str | None = None,
@@ -1160,7 +1160,7 @@ class UnionClipDataset(Dataset):
             ].reset_index(drop=True)
         self.dynamic_detection_sampling = bool(
             split == 'train'
-            and (task == 'detection' or event_budget_training)
+            and (task == 'detection' or patient_budget_training)
             and dataset_key in DETECTION_UNDERSAMPLE_DATASETS
         )
         self.dynamic_prediction_sampling = bool(
@@ -1371,7 +1371,7 @@ class EventBalancedRehearsalSampler(Sampler[int]):
         self.rehearsal_fraction = float(rehearsal_fraction)
         self.epoch = 0
         self.dataset = ConcatDataset([target_dataset, source_dataset])
-        indices, _ = event_balanced_rehearsal_indices(
+        indices, _ = patient_budget_rehearsal_indices(
             target_dataset.manifest, source_dataset.manifest, self.seed, 0,
             rehearsal_fraction=self.rehearsal_fraction,
             target_dataset=str(target_dataset.sampling_dataset_key),
@@ -1387,7 +1387,7 @@ class EventBalancedRehearsalSampler(Sampler[int]):
         return self.epoch_size
 
     def __iter__(self):
-        indices, report = event_balanced_rehearsal_indices(
+        indices, report = patient_budget_rehearsal_indices(
             self.target_dataset.manifest,
             self.source_dataset.manifest,
             self.seed,
@@ -1996,7 +1996,7 @@ def run_torch_transfer(
                 and name in {'target_train', 'target_dev'}
                 else None
             ),
-            event_budget_training=name == 'target_train' and budget_selection is not None,
+            patient_budget_training=name == 'target_train' and budget_selection is not None,
             view_seconds_override=(spec.window_seconds if use_full_clip else None),
             **training_kwargs,
         )

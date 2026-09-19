@@ -32,7 +32,7 @@ from eeg_benchmark.tasks.cross_dataset import (
     add_mission_arguments,
     balance_prediction_training_frame,
     build_spec,
-    event_balanced_rehearsal_indices,
+    patient_budget_rehearsal_indices,
     prepare_mission,
     resolve_in_domain_source_checkpoint,
     undersample_detection_training_frame,
@@ -226,7 +226,7 @@ def run(args: argparse.Namespace) -> None:
             validate_zero_shot_reference(spec, zero_checkpoint, model_arguments, contract)
             save_json(spec.output_dir / 'source_checkpoint_reference.json', {'path': str(zero_checkpoint), 'policy': 'validated_source_reference_then_budget_refit'})
             target_train = filter_budget_manifest(load_manifest(target_root, 'train'), budget_selection.clip_ids('train'), 'train')
-            indices, report = event_balanced_rehearsal_indices(
+            indices, report = patient_budget_rehearsal_indices(
                 target_train,
                 source_train,
                 seed=spec.undersample_seed,

@@ -472,7 +472,7 @@ def run(args: argparse.Namespace) -> None:
             "target_train": UnionClipDataset(
                 target_root, "train", "evobrain", contract,
                 clip_ids=budget_selection.clip_ids('train'),
-                event_budget_training=True,
+                patient_budget_training=True,
                 view_seconds_override=spec.window_seconds,
                 **mission_training_kwargs(spec, 'target', 'train'),
             ),

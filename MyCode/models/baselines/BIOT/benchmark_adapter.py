@@ -410,7 +410,7 @@ def run(args: argparse.Namespace) -> None:
             "target_train": UnionClipDataset(
                 target_root, "train", "biot", contract,
                 clip_ids=budget_selection.clip_ids('train'),
-                event_budget_training=True,
+                patient_budget_training=True,
                 **mission_training_kwargs(spec, 'target', 'train'),
             ),
             "target_dev": UnionClipDataset(
